@@ -104,67 +104,6 @@
       display: block;
     }
 
-    /* Кнопка меню с тремя точками */
-    .menu-button {
-      position: absolute;
-      top: 6px;
-      left: 10px;
-      background: transparent;
-      border: none;
-      color: #ccc;
-      font-size: 20px;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .menu-button:hover {
-      color: white;
-    }
-
-    /* Всплывающее окно редактирования */
-    .edit-popup {
-      position: absolute;
-      top: 30px;
-      left: 10px;
-      background-color: #2c2c2c;
-      border-radius: 10px;
-      padding: 10px;
-      box-shadow: 0 0 10px #000;
-      z-index: 50;
-      width: 130px;
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 14px;
-    }
-
-    .edit-popup input[type="text"],
-    .edit-popup select {
-      width: 100%;
-      padding: 5px;
-      border-radius: 6px;
-      border: none;
-      font-size: 14px;
-      background-color: #444;
-      color: white;
-      box-sizing: border-box;
-    }
-
-    .edit-popup button {
-      padding: 6px;
-      border: none;
-      border-radius: 6px;
-      background-color: #4caf50;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-
-    .edit-popup button:hover {
-      background-color: #45a049;
-    }
-
     /* Floating Add Button */
     .add-button {
       position: fixed;
@@ -425,20 +364,10 @@
     let animationInterval = null;
     let animationTimeout = null;
 
-    let editingIndex = null;
-
     function save() {
       localStorage.setItem("levels", JSON.stringify(levels));
       localStorage.setItem("lengthByIndex", JSON.stringify(lengthByIndex));
       localStorage.setItem("selectedLevels", JSON.stringify(selected));
-    }
-
-    // Close any open edit popups
-    function closeAllEditPopups() {
-      document.querySelectorAll(".edit-popup").forEach(popup => {
-        popup.style.display = "none";
-      });
-      editingIndex = null;
     }
 
     // Render one level square
@@ -456,79 +385,12 @@
       let emoji = spaceIdx >= 0 ? text.slice(0, spaceIdx) : "";
       let name = spaceIdx >= 0 ? text.slice(spaceIdx + 1) : text;
 
-      div.innerHTML = `
-        <button class="menu-button" title="Edit level">⋮</button>
-        <div>${emoji} ${name}</div>
-        <div class="level-length">${lengthLabel.charAt(0).toUpperCase() + lengthLabel.slice(1)}</div>
-        <span class="checkmark">✅</span>
-      `;
-
-      const menuBtn = div.querySelector(".menu-button");
-
-      // Create edit popup
-      const editPopup = document.createElement("div");
-      editPopup.className = "edit-popup";
-      editPopup.innerHTML = `
-        <input type="text" class="edit-name" value="${name}" />
-        <select class="edit-length">
-          <option value="short" ${lengthLabel === "short" ? "selected" : ""}>Short</option>
-          <option value="medium" ${lengthLabel === "medium" ? "selected" : ""}>Medium</option>
-          <option value="long" ${lengthLabel === "long" ? "selected" : ""}>Long</option>
-        </select>
-        <button class="save-edit">Save</button>
-      `;
-
-      div.appendChild(editPopup);
-
-      menuBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        // Close other popups first
-        closeAllEditPopups();
-        // Toggle current popup
-        if (editPopup.style.display === "flex") {
-          editPopup.style.display = "none";
-          editingIndex = null;
-        } else {
-          editPopup.style.display = "flex";
-          editingIndex = index;
-          // Position popup so it doesn't overflow
-          const rect = div.getBoundingClientRect();
-          const popupRect = editPopup.getBoundingClientRect();
-          if (rect.left + popupRect.width > window.innerWidth) {
-            editPopup.style.left = (window.innerWidth - popupRect.width - rect.left) + "px";
-          } else {
-            editPopup.style.left = "10px";
-          }
-        }
-      });
-
-      // Save edit button
-      editPopup.querySelector(".save-edit").addEventListener("click", (e) => {
-        e.stopPropagation();
-        const newName = editPopup.querySelector(".edit-name").value.trim();
-        const newLength = editPopup.querySelector(".edit-length").value;
-        if (!newName) {
-          alert("Please enter a name.");
-          return;
-        }
-        // Update level text preserving emoji
-        levels[index] = `${emoji} ${newName}`;
-        lengthByIndex[index] = newLength;
-        save();
-        closeAllEditPopups();
-        renderLevels();
-      });
+      div.innerHTML = `<div>${emoji} ${name}</div><div class="level-length">${lengthLabel.charAt(0).toUpperCase() + lengthLabel.slice(1)}</div><span class="checkmark">✅</span>`;
 
       div.addEventListener("click", (e) => {
-        // If click not on menu or popup, handle selection or delete
         if (highlighted.includes(index)) {
           highlighted = highlighted.filter(i => i !== index);
           renderLevels();
-          return;
-        }
-
-        if (e.target === menuBtn || editPopup.contains(e.target)) {
-          // Click inside menu or popup - do nothing here
           return;
         }
 
@@ -559,4 +421,126 @@
 
     // Render levels into 3 columns
     function renderLevels() {
-      shortGrid.innerHTML
+      shortGrid.innerHTML = "";
+      mediumGrid.innerHTML = "";
+      longGrid.innerHTML = "";
+
+      levels.forEach((text, index) => {
+        let lengthLabel = lengthByIndex[index] || "unknown";
+        const levelDiv = createLevelDiv(text, lengthLabel, index);
+
+        if (lengthLabel === "short") {
+          shortGrid.appendChild(levelDiv);
+        } else if (lengthLabel === "medium") {
+          mediumGrid.appendChild(levelDiv);
+        } else {
+          longGrid.appendChild(levelDiv);
+        }
+      });
+    }
+
+    function getRandomIndices(count, excludeIndices, lengthFilter) {
+      let available = [];
+      for (let i = 0; i < levels.length; i++) {
+        if (!excludeIndices.includes(i) && lengthByIndex[i] === lengthFilter) {
+          available.push(i);
+        }
+      }
+      let result = [];
+      count = Math.min(count, available.length);
+      while (result.length < count) {
+        let r = available[Math.floor(Math.random() * available.length)];
+        if (!result.includes(r)) result.push(r);
+      }
+      return result;
+    }
+
+    function stopAnimation() {
+      if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+      }
+      if (animationTimeout) {
+        clearTimeout(animationTimeout);
+        animationTimeout = null;
+      }
+    }
+
+    function startAnimation(count) {
+      stopAnimation();
+      targetText.textContent = "";
+      const lengthFilter = lengthSelector.value;
+      lengthInfo.textContent = `Selecting: ${lengthFilter.charAt(0).toUpperCase() + lengthFilter.slice(1)} length levels`;
+
+      animationInterval = setInterval(() => {
+        highlighted = getRandomIndices(count, selected, lengthFilter);
+        renderLevels();
+      }, 250);
+
+      animationTimeout = setTimeout(() => {
+        stopAnimation();
+
+        if (highlighted.length === 0) {
+          targetText.textContent = "Our target: none";
+        } else {
+          let names = highlighted.map(i => {
+            let full = levels[i];
+            let spaceIdx = full.indexOf(' ');
+            return spaceIdx >= 0 ? full.slice(spaceIdx + 1) : full;
+          });
+          targetText.textContent = "Our target: " + names.join(", ");
+        }
+      }, 10000);
+    }
+
+    openModal.addEventListener("click", () => {
+      modal.style.display = "flex";
+    });
+
+    closeModal.addEventListener("click", () => {
+      modal.style.display = "none";
+      emojiInput.value = "";
+      nameInput.value = "";
+      lengthInput.value = "";
+    });
+
+    submitLevel.addEventListener("click", () => {
+      const emoji = emojiInput.value.trim();
+      const name = nameInput.value.trim();
+      const lengthVal = lengthInput.value;
+      if (emoji && name && lengthVal) {
+        levels.push(`${emoji} ${name}`);
+        lengthByIndex.push(lengthVal);
+        save();
+        renderLevels();
+        modal.style.display = "none";
+        emojiInput.value = "";
+        nameInput.value = "";
+        lengthInput.value = "";
+      } else {
+        alert("Please enter emoji, name and select length.");
+      }
+    });
+
+    random1Btn.addEventListener("click", () => {
+      startAnimation(1);
+    });
+
+    random2Btn.addEventListener("click", () => {
+      startAnimation(2);
+    });
+
+    random3Btn.addEventListener("click", () => {
+      startAnimation(3);
+    });
+
+    lengthSelector.addEventListener("change", () => {
+      let len = lengthSelector.value;
+      lengthInfo.textContent = `Selecting: ${len.charAt(0).toUpperCase() + len.slice(1)} length levels`;
+    });
+
+    renderLevels();
+  </script>
+
+</body>
+</html>
