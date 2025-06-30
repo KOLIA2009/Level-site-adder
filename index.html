@@ -46,6 +46,9 @@
       cursor: pointer;
       transition: 0.2s;
       user-select: none;
+      flex-direction: column;
+      padding: 6px 10px;
+      box-sizing: border-box;
     }
 
     .level:hover {
@@ -118,14 +121,17 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
-      width: 300px;
+      width: 320px;
     }
 
-    .modal-content input {
+    .modal-content input,
+    .modal-content select {
       padding: 10px;
       font-size: 16px;
       border: none;
       border-radius: 8px;
+      background-color: #444;
+      color: white;
     }
 
     .modal-content button {
@@ -158,9 +164,10 @@
     }
 
     .random-buttons {
-      margin-bottom: 30px;
+      margin-bottom: 10px;
       display: flex;
       gap: 15px;
+      align-items: center;
     }
 
     .random-buttons button {
@@ -179,6 +186,18 @@
       background-color: #1976d2;
     }
 
+    #lengthSelector {
+      background-color: #333;
+      border-radius: 8px;
+      color: white;
+      padding: 8px 12px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+      border: 2px solid #2196f3;
+      user-select: none;
+    }
+
     /* Bottom left target text */
     #targetText {
       position: fixed;
@@ -190,6 +209,17 @@
       text-shadow: 1px 1px 2px #000;
       user-select: none;
       z-index: 30;
+      max-width: 90vw;
+      word-wrap: break-word;
+    }
+
+    /* Length label on each level */
+    .level-length {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #aaa;
+      font-weight: normal;
+      user-select: none;
     }
   </style>
 </head>
@@ -202,7 +232,14 @@
     <button id="random1">1 Random Level</button>
     <button id="random2">2 Random Levels</button>
     <button id="random3">3 Random Levels</button>
+
+    <select id="lengthSelector" title="Select length for random levels">
+      <option value="short">Short</option>
+      <option value="medium" selected>Medium</option>
+      <option value="long">Long</option>
+    </select>
   </div>
+  <div style="color:#888; margin-bottom: 20px;" id="lengthInfo">Selecting: Medium length levels</div>
 
   <div class="grid" id="levelGrid"></div>
 
@@ -212,6 +249,12 @@
       <button class="modal-close" id="closeModal">✖</button>
       <input type="text" id="emojiInput" placeholder="Emoji (e.g. 🎡)" maxlength="2" required />
       <input type="text" id="nameInput" placeholder="Level Name (e.g. Carnival)" required />
+      <select id="lengthInput" required>
+        <option value="" disabled selected>Select length</option>
+        <option value="short">Short</option>
+        <option value="medium">Medium</option>
+        <option value="long">Long</option>
+      </select>
       <button id="submitLevel">Add Level</button>
     </div>
   </div>
@@ -229,19 +272,51 @@
     const modal = document.getElementById("modal");
     const emojiInput = document.getElementById("emojiInput");
     const nameInput = document.getElementById("nameInput");
+    const lengthInput = document.getElementById("lengthInput");
     const submitLevel = document.getElementById("submitLevel");
 
     const random1Btn = document.getElementById("random1");
     const random2Btn = document.getElementById("random2");
     const random3Btn = document.getElementById("random3");
+    const lengthSelector = document.getElementById("lengthSelector");
+    const lengthInfo = document.getElementById("lengthInfo");
     const targetText = document.getElementById("targetText");
 
+    // Список уровней и их длины
+    // Формат: {name: string, length: "short"|"medium"|"long"}
+    // Здесь emoji + name хранятся в строке, но для длины заводим отдельный массив по индексу
     let levels = JSON.parse(localStorage.getItem("levels")) || [
       "🏚️ House", "🌀 Paths", "🎵 Celestial", "🏨 Hotel", "🏔️ Heights",
       "🏰 Castle", "🚉 Station", "🕳️ Sewer", "🌀 Maze", "🎬 Studio",
       "🕳️ Cave", "🚪 Doors", "🌊 Sea", "🍔 Toilet", "🌳 Outside",
       "🦠 Microworld", "🏊 Pool", "🏘️ City", "⚰️ Morgue"
     ];
+
+    // Длина уровней по твоему списку
+    // short levels:
+    const shortLevels = ["house", "hotel", "celestial", "station", "toilet"];
+    // medium levels:
+    const mediumLevels = ["paths", "heights", "sewer", "maze", "cave", "door", "outside", "studio", "morgue", "pool"];
+    // все остальное — long
+
+    // Для новых уровней длина хранится отдельно в массиве lengthByIndex
+    // При загрузке с localStorage длины тоже загружаем
+    let lengthByIndex = JSON.parse(localStorage.getItem("lengthByIndex")) || [];
+
+    // Если lengthByIndex не совпадает по длине с levels, синхронизируем:
+    if (lengthByIndex.length !== levels.length) {
+      lengthByIndex = levels.map((lvl) => {
+        let lowerName = lvl.toLowerCase();
+        // Найдем текст после эмодзи (первый пробел)
+        const spaceIdx = lowerName.indexOf(" ");
+        let namePart = spaceIdx >= 0 ? lowerName.slice(spaceIdx + 1) : lowerName;
+
+        if (shortLevels.includes(namePart)) return "short";
+        if (mediumLevels.includes(namePart)) return "medium";
+        return "long";
+      });
+      localStorage.setItem("lengthByIndex", JSON.stringify(lengthByIndex));
+    }
 
     let selected = JSON.parse(localStorage.getItem("selectedLevels")) || [];
     let highlighted = [];
@@ -251,13 +326,17 @@
 
     function save() {
       localStorage.setItem("levels", JSON.stringify(levels));
+      localStorage.setItem("lengthByIndex", JSON.stringify(lengthByIndex));
       localStorage.setItem("selectedLevels", JSON.stringify(selected));
     }
 
-    function getRandomIndices(count, excludeIndices) {
+    // Фильтрация индексов по выбранной длине и исключая выбранные
+    function getRandomIndices(count, excludeIndices, lengthFilter) {
       let available = [];
       for (let i = 0; i < levels.length; i++) {
-        if (!excludeIndices.includes(i)) available.push(i);
+        if (!excludeIndices.includes(i) && lengthByIndex[i] === lengthFilter) {
+          available.push(i);
+        }
       }
       let result = [];
       count = Math.min(count, available.length);
@@ -280,7 +359,13 @@
           div.classList.add("highlighted");
         }
 
-        div.innerHTML = `${text} <span class="checkmark">✅</span>`;
+        // Отобразим эмоджи + имя + длину снизу
+        let spaceIdx = text.indexOf(" ");
+        let emoji = spaceIdx >= 0 ? text.slice(0, spaceIdx) : "";
+        let name = spaceIdx >= 0 ? text.slice(spaceIdx + 1) : text;
+        let lengthLabel = lengthByIndex[index] || "unknown";
+
+        div.innerHTML = `<div>${emoji} ${name}</div><div class="level-length">${lengthLabel.charAt(0).toUpperCase() + lengthLabel.slice(1)}</div><span class="checkmark">✅</span>`;
 
         div.addEventListener("click", (e) => {
           if (highlighted.includes(index)) {
@@ -290,11 +375,11 @@
           }
 
           if (e.shiftKey) {
-            if (confirm(`Delete level "${text}"?`)) {
+            if (confirm(`Delete level "${name}"?`)) {
               levels.splice(index, 1);
+              lengthByIndex.splice(index, 1);
               selected = selected.filter(i => i !== index);
               highlighted = [];
-              // Adjust selected indices because levels shifted
               selected = selected.filter(i => i < levels.length);
               save();
               renderLevels();
@@ -323,18 +408,24 @@
       modal.style.display = "none";
       emojiInput.value = "";
       nameInput.value = "";
+      lengthInput.value = "";
     });
 
     submitLevel.addEventListener("click", () => {
       const emoji = emojiInput.value.trim();
       const name = nameInput.value.trim();
-      if (emoji && name) {
+      const lengthVal = lengthInput.value;
+      if (emoji && name && lengthVal) {
         levels.push(`${emoji} ${name}`);
+        lengthByIndex.push(lengthVal);
         save();
         renderLevels();
         modal.style.display = "none";
         emojiInput.value = "";
         nameInput.value = "";
+        lengthInput.value = "";
+      } else {
+        alert("Please enter emoji, name and select length.");
       }
     });
 
@@ -352,20 +443,20 @@
     function startAnimation(count) {
       stopAnimation();
       targetText.textContent = "";
-      // каждые 250ms меняем подсветку случайных уровней
+      const lengthFilter = lengthSelector.value;
+      lengthInfo.textContent = `Selecting: ${lengthFilter.charAt(0).toUpperCase() + lengthFilter.slice(1)} length levels`;
+
       animationInterval = setInterval(() => {
-        highlighted = getRandomIndices(count, selected);
+        highlighted = getRandomIndices(count, selected, lengthFilter);
         renderLevels();
       }, 250);
 
-      // через 10 секунд останавливаем и показываем результат
       animationTimeout = setTimeout(() => {
         stopAnimation();
 
         if (highlighted.length === 0) {
           targetText.textContent = "Our target: none";
         } else {
-          // Получаем названия уровней без эмоджи (оставим текст после первого пробела)
           let names = highlighted.map(i => {
             let full = levels[i];
             let spaceIdx = full.indexOf(' ');
@@ -373,9 +464,6 @@
           });
           targetText.textContent = "Our target: " + names.join(", ");
         }
-        // Сбросим highlighted, чтобы не висели синие после окончания (опционально)
-        // highlighted = [];
-        // renderLevels();
       }, 10000);
     }
 
@@ -391,9 +479,13 @@
       startAnimation(3);
     });
 
+    lengthSelector.addEventListener("change", () => {
+      let len = lengthSelector.value;
+      lengthInfo.textContent = `Selecting: ${len.charAt(0).toUpperCase() + len.slice(1)} length levels`;
+    });
+
     renderLevels();
   </script>
 
 </body>
 </html>
-
