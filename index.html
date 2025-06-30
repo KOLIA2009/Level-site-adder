@@ -14,6 +14,7 @@
       align-items: center;
       padding: 20px;
       min-height: 100vh;
+      position: relative;
     }
 
     h1 {
@@ -28,7 +29,7 @@
       flex-wrap: wrap;
       gap: 10px;
       justify-content: center;
-      margin-bottom: 20px; /* уменьшил отступ вниз, чтобы кнопки ближе */
+      margin-bottom: 20px;
     }
 
     .level {
@@ -57,7 +58,7 @@
     }
 
     .level.highlighted {
-      border-color: #2196f3; /* синий */
+      border-color: #2196f3; /* blue */
       background-color: #1565c0;
     }
 
@@ -156,7 +157,6 @@
       margin-bottom: 10px;
     }
 
-    /* Контейнер для новых кнопок */
     .random-buttons {
       margin-bottom: 30px;
       display: flex;
@@ -179,17 +179,29 @@
       background-color: #1976d2;
     }
 
+    /* Bottom left target text */
+    #targetText {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      color: #2196f3;
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px #000;
+      user-select: none;
+      z-index: 30;
+    }
   </style>
 </head>
 <body>
 
   <h1>🌟 All Levels</h1>
-  <div class="info">💡 Shift + клик по уровню = удалить</div>
+  <div class="info">💡 Shift + click on a level = delete</div>
 
   <div class="random-buttons">
-    <button id="random1">1 рандом уровень</button>
-    <button id="random2">2 рандом уровня</button>
-    <button id="random3">3 рандом уровня</button>
+    <button id="random1">1 Random Level</button>
+    <button id="random2">2 Random Levels</button>
+    <button id="random3">3 Random Levels</button>
   </div>
 
   <div class="grid" id="levelGrid"></div>
@@ -207,6 +219,9 @@
   <!-- Floating Add Button -->
   <button class="add-button" id="openModal">+</button>
 
+  <!-- Target text area -->
+  <div id="targetText"></div>
+
   <script>
     const levelGrid = document.getElementById("levelGrid");
     const openModal = document.getElementById("openModal");
@@ -219,6 +234,7 @@
     const random1Btn = document.getElementById("random1");
     const random2Btn = document.getElementById("random2");
     const random3Btn = document.getElementById("random3");
+    const targetText = document.getElementById("targetText");
 
     let levels = JSON.parse(localStorage.getItem("levels")) || [
       "🏚️ House", "🌀 Paths", "🎵 Celestial", "🏨 Hotel", "🏔️ Heights",
@@ -228,8 +244,10 @@
     ];
 
     let selected = JSON.parse(localStorage.getItem("selectedLevels")) || [];
-
     let highlighted = [];
+
+    let animationInterval = null;
+    let animationTimeout = null;
 
     function save() {
       localStorage.setItem("levels", JSON.stringify(levels));
@@ -243,7 +261,7 @@
       }
       let result = [];
       count = Math.min(count, available.length);
-      while(result.length < count) {
+      while (result.length < count) {
         let r = available[Math.floor(Math.random() * available.length)];
         if (!result.includes(r)) result.push(r);
       }
@@ -272,10 +290,11 @@
           }
 
           if (e.shiftKey) {
-            if (confirm(`Удалить уровень "${text}"?`)) {
+            if (confirm(`Delete level "${text}"?`)) {
               levels.splice(index, 1);
               selected = selected.filter(i => i !== index);
               highlighted = [];
+              // Adjust selected indices because levels shifted
               selected = selected.filter(i => i < levels.length);
               save();
               renderLevels();
@@ -319,21 +338,57 @@
       }
     });
 
-    function highlightRandom(count) {
-      highlighted = getRandomIndices(count, selected);
-      renderLevels();
+    function stopAnimation() {
+      if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+      }
+      if (animationTimeout) {
+        clearTimeout(animationTimeout);
+        animationTimeout = null;
+      }
+    }
+
+    function startAnimation(count) {
+      stopAnimation();
+      targetText.textContent = "";
+      // каждые 250ms меняем подсветку случайных уровней
+      animationInterval = setInterval(() => {
+        highlighted = getRandomIndices(count, selected);
+        renderLevels();
+      }, 250);
+
+      // через 10 секунд останавливаем и показываем результат
+      animationTimeout = setTimeout(() => {
+        stopAnimation();
+
+        if (highlighted.length === 0) {
+          targetText.textContent = "Our target: none";
+        } else {
+          // Получаем названия уровней без эмоджи (оставим текст после первого пробела)
+          let names = highlighted.map(i => {
+            let full = levels[i];
+            let spaceIdx = full.indexOf(' ');
+            return spaceIdx >= 0 ? full.slice(spaceIdx + 1) : full;
+          });
+          targetText.textContent = "Our target: " + names.join(", ");
+        }
+        // Сбросим highlighted, чтобы не висели синие после окончания (опционально)
+        // highlighted = [];
+        // renderLevels();
+      }, 10000);
     }
 
     random1Btn.addEventListener("click", () => {
-      highlightRandom(1);
+      startAnimation(1);
     });
 
     random2Btn.addEventListener("click", () => {
-      highlightRandom(2);
+      startAnimation(2);
     });
 
     random3Btn.addEventListener("click", () => {
-      highlightRandom(3);
+      startAnimation(3);
     });
 
     renderLevels();
