@@ -60,8 +60,8 @@
     }
 
     .level {
-      width: 150px;
-      height: 100px;
+      width: calc(50% - 10px); /* Два уровня в строке */
+      height: 80px;
       background-color: #333;
       border: 2px solid #444;
       border-radius: 12px;
@@ -255,12 +255,71 @@
       font-weight: normal;
       user-select: none;
     }
+
+    /* Context menu (three dots) */
+    .level-menu {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s;
+      z-index: 5;
+    }
+
+    .level-menu:hover {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Context menu dropdown */
+    .context-menu {
+      position: absolute;
+      background-color: #333;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 5px 0;
+      z-index: 100;
+      right: 5px;
+      top: 30px;
+      min-width: 150px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      display: none;
+    }
+
+    .context-menu-item {
+      padding: 8px 15px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .context-menu-item:hover {
+      background-color: #444;
+    }
+
+    /* Edit modal specific styles */
+    .edit-modal-content {
+      background-color: #2c2c2c;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px #000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 320px;
+    }
   </style>
 </head>
 <body>
 
   <h1>🌟 All Levels</h1>
-  <div class="info">💡 Shift + click on a level = delete</div>
+  <div class="info">💡 Shift + click on a level = delete | Click ⋯ to edit</div>
 
   <div class="random-buttons">
     <button id="random1">1 Random Level</button>
@@ -307,6 +366,21 @@
     </div>
   </div>
 
+  <!-- Edit Level Modal -->
+  <div class="modal" id="editModal">
+    <div class="edit-modal-content">
+      <button class="modal-close" id="closeEditModal">✖</button>
+      <input type="text" id="editEmojiInput" placeholder="Emoji" maxlength="2" required />
+      <input type="text" id="editNameInput" placeholder="Level Name" required />
+      <select id="editLengthInput" required>
+        <option value="short">Short</option>
+        <option value="medium">Medium</option>
+        <option value="long">Long</option>
+      </select>
+      <button id="saveEdit">Save Changes</button>
+    </div>
+  </div>
+
   <!-- Floating Add Button -->
   <button class="add-button" id="openModal">+</button>
 
@@ -325,6 +399,13 @@
     const nameInput = document.getElementById("nameInput");
     const lengthInput = document.getElementById("lengthInput");
     const submitLevel = document.getElementById("submitLevel");
+
+    const editModal = document.getElementById("editModal");
+    const closeEditModal = document.getElementById("closeEditModal");
+    const editEmojiInput = document.getElementById("editEmojiInput");
+    const editNameInput = document.getElementById("editNameInput");
+    const editLengthInput = document.getElementById("editLengthInput");
+    const saveEdit = document.getElementById("saveEdit");
 
     const random1Btn = document.getElementById("random1");
     const random2Btn = document.getElementById("random2");
@@ -360,6 +441,7 @@
 
     let selected = JSON.parse(localStorage.getItem("selectedLevels")) || [];
     let highlighted = [];
+    let currentlyEditingIndex = -1;
 
     let animationInterval = null;
     let animationTimeout = null;
@@ -385,9 +467,23 @@
       let emoji = spaceIdx >= 0 ? text.slice(0, spaceIdx) : "";
       let name = spaceIdx >= 0 ? text.slice(spaceIdx + 1) : text;
 
-      div.innerHTML = `<div>${emoji} ${name}</div><div class="level-length">${lengthLabel.charAt(0).toUpperCase() + lengthLabel.slice(1)}</div><span class="checkmark">✅</span>`;
+      div.innerHTML = `
+        <div>${emoji} ${name}</div>
+        <div class="level-length">${lengthLabel.charAt(0).toUpperCase() + lengthLabel.slice(1)}</div>
+        <span class="checkmark">✅</span>
+        <div class="level-menu" data-index="${index}">⋯</div>
+        <div class="context-menu" id="context-menu-${index}">
+          <div class="context-menu-item" data-action="edit">Edit Level</div>
+          <div class="context-menu-item" data-action="change-length">Change Length</div>
+        </div>
+      `;
 
       div.addEventListener("click", (e) => {
+        // Ignore clicks on the menu button (it has its own handler)
+        if (e.target.classList.contains("level-menu") || e.target.closest(".level-menu")) {
+          return;
+        }
+        
         if (highlighted.includes(index)) {
           highlighted = highlighted.filter(i => i !== index);
           renderLevels();
@@ -416,7 +512,71 @@
         }
       });
 
+      // Add event listener for the menu button
+      const menuBtn = div.querySelector(".level-menu");
+      const contextMenu = div.querySelector(".context-menu");
+      
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        
+        // Hide all other context menus
+        document.querySelectorAll(".context-menu").forEach(menu => {
+          if (menu !== contextMenu) menu.style.display = "none";
+        });
+        
+        // Toggle this context menu
+        if (contextMenu.style.display === "block") {
+          contextMenu.style.display = "none";
+        } else {
+          contextMenu.style.display = "block";
+        }
+      });
+
+      // Add event listeners for context menu items
+      const menuItems = div.querySelectorAll(".context-menu-item");
+      menuItems.forEach(item => {
+        item.addEventListener("click", (e) => {
+          e.stopPropagation();
+          contextMenu.style.display = "none";
+          
+          if (item.dataset.action === "edit") {
+            openEditModal(index);
+          } else if (item.dataset.action === "change-length") {
+            changeLevelLength(index);
+          }
+        });
+      });
+
       return div;
+    }
+
+    function openEditModal(index) {
+      currentlyEditingIndex = index;
+      const level = levels[index];
+      const length = lengthByIndex[index];
+      
+      let spaceIdx = level.indexOf(" ");
+      let emoji = spaceIdx >= 0 ? level.slice(0, spaceIdx) : "";
+      let name = spaceIdx >= 0 ? level.slice(spaceIdx + 1) : level;
+      
+      editEmojiInput.value = emoji;
+      editNameInput.value = name;
+      editLengthInput.value = length;
+      
+      editModal.style.display = "flex";
+    }
+
+    function changeLevelLength(index) {
+      const currentLength = lengthByIndex[index];
+      const newLength = prompt("Change level length (short/medium/long):", currentLength);
+      
+      if (newLength && ["short", "medium", "long"].includes(newLength.toLowerCase())) {
+        lengthByIndex[index] = newLength.toLowerCase();
+        save();
+        renderLevels();
+      } else if (newLength) {
+        alert("Please enter either 'short', 'medium' or 'long'");
+      }
     }
 
     // Render levels into 3 columns
@@ -493,6 +653,13 @@
       }, 10000);
     }
 
+    // Close context menus when clicking outside
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".context-menu").forEach(menu => {
+        menu.style.display = "none";
+      });
+    });
+
     openModal.addEventListener("click", () => {
       modal.style.display = "flex";
     });
@@ -502,6 +669,11 @@
       emojiInput.value = "";
       nameInput.value = "";
       lengthInput.value = "";
+    });
+
+    closeEditModal.addEventListener("click", () => {
+      editModal.style.display = "none";
+      currentlyEditingIndex = -1;
     });
 
     submitLevel.addEventListener("click", () => {
@@ -517,6 +689,23 @@
         emojiInput.value = "";
         nameInput.value = "";
         lengthInput.value = "";
+      } else {
+        alert("Please enter emoji, name and select length.");
+      }
+    });
+
+    saveEdit.addEventListener("click", () => {
+      const emoji = editEmojiInput.value.trim();
+      const name = editNameInput.value.trim();
+      const lengthVal = editLengthInput.value;
+      
+      if (emoji && name && lengthVal && currentlyEditingIndex >= 0) {
+        levels[currentlyEditingIndex] = `${emoji} ${name}`;
+        lengthByIndex[currentlyEditingIndex] = lengthVal;
+        save();
+        renderLevels();
+        editModal.style.display = "none";
+        currentlyEditingIndex = -1;
       } else {
         alert("Please enter emoji, name and select length.");
       }
