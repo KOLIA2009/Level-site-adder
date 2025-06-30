@@ -28,7 +28,7 @@
       flex-wrap: wrap;
       gap: 10px;
       justify-content: center;
-      margin-bottom: 60px;
+      margin-bottom: 20px; /* уменьшил отступ вниз, чтобы кнопки ближе */
     }
 
     .level {
@@ -54,6 +54,11 @@
     .level.selected {
       border-color: #4caf50;
       background-color: #2e7d32;
+    }
+
+    .level.highlighted {
+      border-color: #2196f3; /* синий */
+      background-color: #1565c0;
     }
 
     .checkmark {
@@ -83,6 +88,7 @@
       cursor: pointer;
       box-shadow: 0 0 10px #000;
       transition: 0.3s;
+      z-index: 20;
     }
 
     .add-button:hover {
@@ -149,12 +155,42 @@
       font-size: 14px;
       margin-bottom: 10px;
     }
+
+    /* Контейнер для новых кнопок */
+    .random-buttons {
+      margin-bottom: 30px;
+      display: flex;
+      gap: 15px;
+    }
+
+    .random-buttons button {
+      background-color: #2196f3;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      padding: 10px 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+      font-size: 16px;
+    }
+
+    .random-buttons button:hover {
+      background-color: #1976d2;
+    }
+
   </style>
 </head>
 <body>
 
   <h1>🌟 All Levels</h1>
   <div class="info">💡 Shift + клик по уровню = удалить</div>
+
+  <div class="random-buttons">
+    <button id="random1">1 рандом уровень</button>
+    <button id="random2">2 рандом уровня</button>
+    <button id="random3">3 рандом уровня</button>
+  </div>
 
   <div class="grid" id="levelGrid"></div>
 
@@ -180,6 +216,10 @@
     const nameInput = document.getElementById("nameInput");
     const submitLevel = document.getElementById("submitLevel");
 
+    const random1Btn = document.getElementById("random1");
+    const random2Btn = document.getElementById("random2");
+    const random3Btn = document.getElementById("random3");
+
     let levels = JSON.parse(localStorage.getItem("levels")) || [
       "🏚️ House", "🌀 Paths", "🎵 Celestial", "🏨 Hotel", "🏔️ Heights",
       "🏰 Castle", "🚉 Station", "🕳️ Sewer", "🌀 Maze", "🎬 Studio",
@@ -189,9 +229,25 @@
 
     let selected = JSON.parse(localStorage.getItem("selectedLevels")) || [];
 
+    let highlighted = [];
+
     function save() {
       localStorage.setItem("levels", JSON.stringify(levels));
       localStorage.setItem("selectedLevels", JSON.stringify(selected));
+    }
+
+    function getRandomIndices(count, excludeIndices) {
+      let available = [];
+      for (let i = 0; i < levels.length; i++) {
+        if (!excludeIndices.includes(i)) available.push(i);
+      }
+      let result = [];
+      count = Math.min(count, available.length);
+      while(result.length < count) {
+        let r = available[Math.floor(Math.random() * available.length)];
+        if (!result.includes(r)) result.push(r);
+      }
+      return result;
     }
 
     function renderLevels() {
@@ -199,16 +255,28 @@
       levels.forEach((text, index) => {
         const div = document.createElement("div");
         div.className = "level";
+
         if (selected.includes(index)) {
           div.classList.add("selected");
+        } else if (highlighted.includes(index)) {
+          div.classList.add("highlighted");
         }
+
         div.innerHTML = `${text} <span class="checkmark">✅</span>`;
 
         div.addEventListener("click", (e) => {
+          if (highlighted.includes(index)) {
+            highlighted = highlighted.filter(i => i !== index);
+            renderLevels();
+            return;
+          }
+
           if (e.shiftKey) {
             if (confirm(`Удалить уровень "${text}"?`)) {
               levels.splice(index, 1);
               selected = selected.filter(i => i !== index);
+              highlighted = [];
+              selected = selected.filter(i => i < levels.length);
               save();
               renderLevels();
             }
@@ -218,6 +286,7 @@
             } else {
               selected.push(index);
             }
+            highlighted = [];
             save();
             renderLevels();
           }
@@ -250,8 +319,26 @@
       }
     });
 
+    function highlightRandom(count) {
+      highlighted = getRandomIndices(count, selected);
+      renderLevels();
+    }
+
+    random1Btn.addEventListener("click", () => {
+      highlightRandom(1);
+    });
+
+    random2Btn.addEventListener("click", () => {
+      highlightRandom(2);
+    });
+
+    random3Btn.addEventListener("click", () => {
+      highlightRandom(3);
+    });
+
     renderLevels();
   </script>
 
 </body>
 </html>
+
